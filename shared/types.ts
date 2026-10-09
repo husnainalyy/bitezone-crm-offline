@@ -114,6 +114,10 @@ export interface OrderDetail extends OrderSummary {
   area: string | null
   landmark: string | null
   instructions: string | null
+  restaurantName: string
+  restaurantPhone: string
+  restaurantAddress: string
+  receiptFooter: string
   items: OrderLine[]
 }
 

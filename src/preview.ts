@@ -33,8 +33,8 @@ const counter: CounterData = {
 const orders: OrderDetail[] = []
 
 function summary(order: OrderDetail): OrderSummary {
-  const { notes, subtotal, discount, tax, deliveryFee, customerPhone, address, area, landmark, instructions, items, ...rest } = order
-  void notes; void subtotal; void discount; void tax; void deliveryFee; void customerPhone; void address; void area; void landmark; void instructions; void items
+  const { notes, subtotal, discount, tax, deliveryFee, customerPhone, address, area, landmark, instructions, restaurantName, restaurantPhone, restaurantAddress, receiptFooter, items, ...rest } = order
+  void notes; void subtotal; void discount; void tax; void deliveryFee; void customerPhone; void address; void area; void landmark; void instructions; void restaurantName; void restaurantPhone; void restaurantAddress; void receiptFooter; void items
   return rest
 }
 
@@ -93,6 +93,10 @@ export function installPreview() {
         area: input.guest?.area || null,
         landmark: input.guest?.landmark || null,
         instructions: input.guest?.instructions || null,
+        restaurantName: counter.settings.name,
+        restaurantPhone: '',
+        restaurantAddress: '',
+        receiptFooter: counter.settings.receiptFooter,
         items: lines,
       }
       orders.unshift(order)

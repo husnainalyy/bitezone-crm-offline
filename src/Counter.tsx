@@ -10,8 +10,7 @@ const blankGuest = { customerId: '', name: '', phone: '', addressId: '', address
 export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: string) => void }) {
   const [data, setData] = useState<CounterData | null>(null)
   const [error, setError] = useState('')
-  const [type, setType] = useState<OrderType>('dine_in')
-  const [tableId, setTableId] = useState('')
+  const [type, setType] = useState<OrderType>('takeaway')
   const [guest, setGuest] = useState(blankGuest)
   const [category, setCategory] = useState('all')
   const [query, setQuery] = useState('')
@@ -45,7 +44,6 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
     return () => { cancel = true }
   }, [reload])
 
-  const busyTables = useMemo(() => new Set(data?.busyTableIds ?? []), [data])
   const categories = data?.categories ?? []
   const items = (data?.items ?? []).filter((item) => (category === 'all' || item.categoryId === category) && item.name.toLowerCase().includes(query.trim().toLowerCase()))
   const guestMatches = useMemo(() => {
@@ -133,23 +131,21 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
     setFormError('')
     if (!lines.length) return setFormError('Add at least one item.')
     if (missing) return setFormError('An item is no longer on the menu. Remove it and choose again.')
-    if (type === 'dine_in' && !tableId) return setFormError('Select a table.')
     setBusy(true)
     try {
       const result = await window.bitezone.placeOrder({
         orderType: type,
-        tableId: type === 'dine_in' ? tableId : null,
+        tableId: null,
         notes,
         discountMode,
         discountValue,
         deliveryFee: type === 'delivery' ? fee : 0,
         lines: lines.map(({ menuItemId, variantId, quantity, notes: itemNotes }) => ({ menuItemId, variantId, quantity, notes: itemNotes })),
-        guest: type === 'dine_in' ? null : guest,
+        guest,
       })
       setLines([])
       setNotes('')
       setGuest(blankGuest)
-      setTableId('')
       onPlaced(result.id)
     } catch (reason) {
       setFormError(reason instanceof Error ? reason.message : 'The order could not be saved.')
@@ -169,23 +165,13 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
       <div className="menu">
         <div className="menu-head">
           <div className="types" role="tablist" aria-label="Order type">
-            {(['dine_in', 'takeaway', 'delivery'] as const).map((value) => (
+            {(['takeaway', 'delivery'] as const).map((value) => (
               <button key={value} aria-pressed={type === value} onClick={() => { setType(value); if (value === 'delivery') setFee(data.settings.defaultDeliveryFee) }}>
-                {value === 'dine_in' ? 'Dine-in' : value === 'takeaway' ? 'Takeaway' : 'Delivery'}
+                {value === 'takeaway' ? 'Takeaway' : 'Delivery'}
               </button>
             ))}
           </div>
-          {type === 'dine_in' && (
-            <div className="choices" role="listbox" aria-label="Tables">
-              {data.tables.map((table) => {
-                const taken = busyTables.has(table.id)
-                return <button key={table.id} aria-pressed={tableId === table.id} disabled={taken} onClick={() => setTableId(table.id)}><strong>{table.name}</strong><span>{taken ? 'Busy' : `${table.capacity} seats`}</span></button>
-              })}
-              {!data.tables.length && <p className="hint">No tables yet. Add them in the online CRM, then sync.</p>}
-            </div>
-          )}
-          {type !== 'dine_in' && (
-            <div className="guest">
+          <div className="guest">
               <div className="form-grid">
                 <label>Customer name<input aria-label="Customer name" value={guest.name} placeholder="Start typing a saved name" onChange={(event) => setGuest({ ...guest, customerId: '', name: event.target.value })} /></label>
                 <label>Phone<input aria-label="Customer phone" value={guest.phone} placeholder="Or a saved phone" onChange={(event) => setGuest({ ...guest, customerId: '', phone: event.target.value })} /></label>
@@ -217,8 +203,7 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
                   <label className="full">Instructions<textarea value={guest.instructions} onChange={(event) => setGuest({ ...guest, instructions: event.target.value })} /></label>
                   <label>Delivery fee (Rs)<input type="number" min={0} value={fee} onChange={(event) => setFee(Number(event.target.value))} /></label>
               </div>}
-            </div>
-          )}
+          </div>
           <div className="types categories" role="tablist" aria-label="Categories">
             <button aria-pressed={category === 'all'} onClick={() => setCategory('all')}>All</button>
             {categories.map((row) => <button key={row.id} aria-pressed={category === row.id} onClick={() => setCategory(row.id)}>{row.name}</button>)}

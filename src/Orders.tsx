@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { OrderDetail, OrderFilter, OrderSummary } from '@shared/types'
 import { formatMoney, formatWhen, orderLabel, orderTypeLabel, statusLabel } from '@shared/format'
+import { PrintSlip } from './slip'
 
 export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: number; selectedId: string | null; onSelect: (id: string | null) => void; onChanged: () => void }) {
   const [filter, setFilter] = useState<OrderFilter>('open')
@@ -9,6 +10,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
   const [order, setOrder] = useState<OrderDetail | null>(null)
   const [error, setError] = useState('')
   const [confirming, setConfirming] = useState(false)
+  const [slip, setSlip] = useState<'kitchen' | 'bill' | null>(null)
 
   useEffect(() => {
     let cancel = false
@@ -22,6 +24,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
 
   useEffect(() => {
     setConfirming(false)
+    setSlip(null)
     if (!selectedId) { setOrder(null); return }
     let cancel = false
     window.bitezone.getOrder(selectedId)
@@ -56,7 +59,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
             <li key={row.id}>
               <button className={selectedId === row.id ? 'selected' : ''} onClick={() => onSelect(row.id)}>
                 <span className="mono">{orderLabel(row.orderNumber, row.localNumber)}</span>
-                <span>{row.customerName || row.tableName || orderTypeLabel(row.orderType)}</span>
+                <span>{row.customerName || orderTypeLabel(row.orderType)}</span>
                 <em className={row.syncStatus === 'failed' ? 'bad' : row.syncStatus === 'pending' ? 'wait' : ''}>{row.syncStatus === 'pending' ? 'Waiting to sync' : row.syncStatus === 'failed' ? 'Could not sync' : statusLabel(row.status)}</em>
                 <b className="mono">{formatMoney(row.total)}</b>
               </button>
@@ -70,7 +73,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
           <>
             <div className="ticket-head">
               <div>
-                <p className="eyebrow">{orderTypeLabel(order.orderType)}{order.tableName ? ` · ${order.tableName}` : ''}</p>
+                <p className="eyebrow">{orderTypeLabel(order.orderType)}</p>
                 <h2>{orderLabel(order.orderNumber, order.localNumber)}</h2>
                 <p>{formatWhen(order.createdAt)}</p>
               </div>
@@ -103,7 +106,10 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
               {order.orderType === 'delivery' && <div><dt>Delivery</dt><dd className="mono">{formatMoney(order.deliveryFee)}</dd></div>}
               <div className="grand"><dt>Total</dt><dd className="mono">{formatMoney(order.total)}</dd></div>
             </dl>
-            <p className="hint">Status: {statusLabel(order.status)} · Payment: {statusLabel(order.paymentStatus)}. Change those in the online CRM, then sync to refresh this ticket.</p>
+            <div className="setup-actions">
+              <button className="secondary" type="button" onClick={() => setSlip('kitchen')}>Kitchen slip</button>
+              <button className="primary" type="button" onClick={() => setSlip('bill')}>Customer bill</button>
+            </div>
             {order.notes && <p className="hint">Note: {order.notes}</p>}
             {order.origin === 'local' && order.syncStatus !== 'synced' && (confirming ? (
               <div className="setup-actions">
@@ -113,6 +119,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
             ) : <button className="danger" onClick={() => setConfirming(true)}>Delete unsent order</button>)}
           </>
         )}
+        {order && slip && <PrintSlip kind={slip} order={order} onClose={() => setSlip(null)} />}
       </div>
     </div>
   )

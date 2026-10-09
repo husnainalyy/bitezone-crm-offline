@@ -132,6 +132,8 @@ dl div { color: var(--muted); }
 .place { width: 100%; justify-content: center; }
 .modal { position: fixed; inset: 0; background: var(--modal-shade); display: grid; place-items: center; padding: 24px; }
 .modal-card { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 48px rgba(0, 0, 0, .18); }
+.slip-card { width: min(460px, 100%); max-height: calc(100dvh - 48px); overflow: auto; }
+.slip-sheet { background: #fff; border-radius: 8px; padding: 12px 0; }
 .option { display: flex; justify-content: space-between; min-height: 48px; padding: 0 12px; border: 1px solid var(--line); }
 .matches { display: flex; flex-direction: column; gap: 6px; }
 .matches button { display: flex; justify-content: space-between; padding: 10px 12px; border-color: var(--line); }

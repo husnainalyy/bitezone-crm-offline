@@ -140,15 +140,7 @@ export function placeOrder(input: PlaceOrderInput) {
       return { ...line, name: item.name, variantName, price, notes: line.notes.trim().slice(0, 1000) }
     })
 
-    let tableId: string | null = null
-    if (input.orderType === 'dine_in') {
-      if (!input.tableId) throw new Error('Select a table.')
-      const table = await client.query<{ id: string }>(`select id from restaurant_tables where id = $1 and active for update`, [input.tableId])
-      if (!table.rows[0]) throw new Error('Select an active table.')
-      const busy = await client.query(`select 1 from orders where table_id = $1 and status not in ('completed', 'cancelled')`, [input.tableId])
-      if (busy.rowCount) throw new Error('That table already has an open order.')
-      tableId = input.tableId
-    }
+    const tableId: string | null = null
 
     const guest = await rememberGuest(client, input)
     const settings = await client.query<{ tax_rate: string }>(`select tax_rate from restaurant_settings where id = 1`)
@@ -279,6 +271,10 @@ export async function getOrder(id: string): Promise<OrderDetail> {
   `, [id])
   const row = result.rows[0]
   if (!row) throw new Error('That order is not on this computer.')
+  const settings = await getPool().query<{ name: string; phone: string; address: string; receipt_footer: string }>(
+    `select name, phone, address, receipt_footer from restaurant_settings where id = 1`,
+  )
+  const setting = settings.rows[0]
   const items = await getPool().query<{ id: string; item_name: string; variant_name: string | null; unit_price: string; quantity: number; line_total: string; notes: string | null }>(
     `select id, item_name, variant_name, unit_price, quantity, line_total, notes from order_items where order_id = $1`,
     [id],
@@ -295,6 +291,10 @@ export async function getOrder(id: string): Promise<OrderDetail> {
     area: row.area_snapshot,
     landmark: row.landmark_snapshot,
     instructions: row.instructions_snapshot,
+    restaurantName: setting?.name || 'BiteZone',
+    restaurantPhone: setting?.phone || '',
+    restaurantAddress: setting?.address || '',
+    receiptFooter: setting?.receipt_footer || 'Thank you. Visit again.',
     items: items.rows.map((item) => ({ id: item.id, name: item.item_name, variantName: item.variant_name, unitPrice: money(item.unit_price), quantity: item.quantity, lineTotal: money(item.line_total), notes: item.notes ?? '' })),
   }
 }

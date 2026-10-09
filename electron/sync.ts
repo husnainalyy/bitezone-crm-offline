@@ -296,8 +296,8 @@ export function syncNow() {
       const summary = pushed.failures.length
         ? `${pushed.failures.length} order${pushed.failures.length === 1 ? '' : 's'} could not be sent.`
         : pushed.ordersPushed
-          ? `${pushed.ordersPushed} order${pushed.ordersPushed === 1 ? '' : 's'} sent. Menu, tables, and customer names are up to date.`
-          : 'Menu, tables, and customer names are up to date. Nothing was waiting to send.'
+          ? `${pushed.ordersPushed} order${pushed.ordersPushed === 1 ? '' : 's'} sent. Menu and customer names are up to date.`
+          : 'Menu and customer names are up to date. Nothing was waiting to send.'
       await getPool().query(`update sync_state set last_synced_at = now(), last_error = $1 where id = 1`, [pushed.failures.length ? summary : null])
       return { online: true, message: summary, ...pulled, ...pushed }
     } catch (error) {
