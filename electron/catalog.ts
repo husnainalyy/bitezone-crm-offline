@@ -140,7 +140,14 @@ export function placeOrder(input: PlaceOrderInput) {
       return { ...line, name: item.name, variantName, price, notes: line.notes.trim().slice(0, 1000) }
     })
 
-    const tableId: string | null = null
+    let tableId: string | null = null
+    if (input.orderType === 'dine_in' && input.tableId) {
+      const table = await client.query<{ id: string }>(`select id from restaurant_tables where id = $1 and active for update`, [input.tableId])
+      if (!table.rows[0]) throw new Error('That table is not available.')
+      const busy = await client.query(`select 1 from orders where table_id = $1 and status not in ('completed', 'cancelled')`, [input.tableId])
+      if (busy.rowCount) throw new Error('That table already has an open order.')
+      tableId = input.tableId
+    }
 
     const guest = await rememberGuest(client, input)
     const settings = await client.query<{ tax_rate: string }>(`select tax_rate from restaurant_settings where id = 1`)

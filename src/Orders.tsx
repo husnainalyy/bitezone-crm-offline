@@ -59,7 +59,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
             <li key={row.id}>
               <button className={selectedId === row.id ? 'selected' : ''} onClick={() => onSelect(row.id)}>
                 <span className="mono">{orderLabel(row.orderNumber, row.localNumber)}</span>
-                <span>{row.customerName || orderTypeLabel(row.orderType)}</span>
+                <span>{row.customerName || row.tableName || orderTypeLabel(row.orderType)}</span>
                 <em className={row.syncStatus === 'failed' ? 'bad' : row.syncStatus === 'pending' ? 'wait' : ''}>{row.syncStatus === 'pending' ? 'Waiting to sync' : row.syncStatus === 'failed' ? 'Could not sync' : statusLabel(row.status)}</em>
                 <b className="mono">{formatMoney(row.total)}</b>
               </button>
@@ -73,7 +73,7 @@ export function Orders({ reload, selectedId, onSelect, onChanged }: { reload: nu
           <>
             <div className="ticket-head">
               <div>
-                <p className="eyebrow">{orderTypeLabel(order.orderType)}</p>
+                <p className="eyebrow">{orderTypeLabel(order.orderType)}{order.tableName ? ` · ${order.tableName}` : ''}</p>
                 <h2>{orderLabel(order.orderNumber, order.localNumber)}</h2>
                 <p>{formatWhen(order.createdAt)}</p>
               </div>

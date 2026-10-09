@@ -92,6 +92,7 @@ export function PrintSlip({ kind, order, onClose }: { kind: 'kitchen' | 'bill'; 
             <div className="slip-row"><span>Order</span><b>{orderLabel(order.orderNumber, order.localNumber)}</b></div>
             <div className="slip-row"><span>Time</span><span>{formatWhen(order.createdAt)}</span></div>
             <div className="slip-row"><span>Type</span><span>{orderTypeLabel(order.orderType)}</span></div>
+            {order.tableName && <div className="slip-row"><span>Table</span><span>{order.tableName}</span></div>}
             {order.customerName && <div className="slip-row"><span>Guest</span><span>{order.customerName}</span></div>}
             {order.customerPhone && <div className="slip-row"><span>Phone</span><span>{order.customerPhone}</span></div>}
             {kind === 'bill' && order.address && <div className="slip-meta">{order.address}{order.area ? `, ${order.area}` : ''}</div>}
