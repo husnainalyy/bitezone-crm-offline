@@ -19,14 +19,14 @@ npm install
 npm run build
 ```
 
-When that finishes, start the counter with:
+When that finishes, put **BiteZone Counter** on the Desktop:
 
 ```bat
 cd /d %USERPROFILE%\Desktop\bitezone-crm-offline
-"Open BiteZone.bat"
+"Make Desktop Icon.bat"
 ```
 
-The next day, double-click **Open BiteZone** in that folder. Do not run `npm` again.
+That icon opens the offline counter. The next day, double-click **BiteZone Counter** on the Desktop. Do not run `npm` again.
 
 ## Put it on a restaurant computer, one time
 
@@ -38,7 +38,7 @@ npm install
 npm run build
 ```
 
-3. On a Mac, double-click **BiteZone Counter**. On Windows, double-click **Open BiteZone**. You can drag that icon to the Desktop or the Dock.
+3. On a Mac, double-click **BiteZone Counter**. On Windows, double-click **Make Desktop Icon**, then use the **BiteZone Counter** icon it places on the Desktop.
 4. Open **Online sync** once. Enter the website address, key, admin email, and admin password from the online BiteZone CRM. Press **Save**.
 5. Press **Sync** while the internet is on. The menu, tables, and customer names download onto this computer.
 
