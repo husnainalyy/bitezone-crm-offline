@@ -1,4 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { WebSocketLikeConstructor } from '@supabase/realtime-js'
+import WebSocket from 'ws'
 import type { Db } from './db'
 import { iso, money, orderLabel } from '../shared/format'
 import type { SyncReport } from '../shared/types'
@@ -279,6 +281,7 @@ export function syncNow() {
     }
     const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      realtime: { transport: WebSocket as unknown as WebSocketLikeConstructor },
     })
     try {
       const auth = await supabase.auth.signInWithPassword({ email: config.supabase.email, password: config.supabase.password })
