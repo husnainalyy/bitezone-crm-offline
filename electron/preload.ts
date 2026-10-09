@@ -10,6 +10,7 @@ const api: DesktopApi = {
   listOrders: (filter: OrderFilter) => ipcRenderer.invoke('orders:list', filter),
   getOrder: (id: string) => ipcRenderer.invoke('order:get', id),
   discardOrder: (id: string) => ipcRenderer.invoke('order:discard', id),
+  getDaySales: (day: string) => ipcRenderer.invoke('sales:day', day),
   sync: () => ipcRenderer.invoke('sync'),
 }
 

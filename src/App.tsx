@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react'
-import { ClipboardList, RefreshCw, Settings, UtensilsCrossed } from 'lucide-react'
+import { ClipboardList, ChartColumn, RefreshCw, Settings, UtensilsCrossed } from 'lucide-react'
 import type { AppStatus } from '@shared/types'
 import { formatWhen } from '@shared/format'
 import { Counter } from './Counter'
 import { Orders } from './Orders'
+import { Sales } from './Sales'
 import { Setup } from './Setup'
 
-type View = 'counter' | 'orders' | 'setup'
+type View = 'counter' | 'orders' | 'sales' | 'setup'
 type Theme = 'light' | 'dark'
 
 function ThemeChoice() {
@@ -73,6 +74,7 @@ export function App() {
             <ClipboardList size={18} />Orders
             {status && status.pendingCount > 0 ? <span className="count">{status.pendingCount}</span> : null}
           </button>
+          <button className={view === 'sales' ? 'active' : ''} disabled={!ready} onClick={() => setView('sales')}><ChartColumn size={18} />Sales</button>
           <button className={view === 'setup' ? 'active' : ''} onClick={() => setView('setup')}><Settings size={18} />Online sync</button>
         </nav>
         <div className="sidebar-foot">
@@ -84,7 +86,7 @@ export function App() {
       <section className="main">
         <header className="topbar">
           <div>
-            <strong>{view === 'orders' ? 'Orders' : view === 'setup' ? 'Online sync' : 'New order'}</strong>
+            <strong>{view === 'orders' ? 'Orders' : view === 'sales' ? 'Sales' : view === 'setup' ? 'Online sync' : 'New order'}</strong>
             <p>{status?.lastSyncedAt ? `Last sync ${formatWhen(status.lastSyncedAt)}` : 'Not synced yet'}</p>
           </div>
           <button className="sync" disabled={syncing || !ready} onClick={() => void sync()}>
@@ -99,6 +101,7 @@ export function App() {
           {view === 'setup' && <Setup status={status} onSaved={(next) => { setStatus(next); setView('counter') }} />}
           {view === 'counter' && ready && <Counter reload={reload} onPlaced={(id) => { setSelectedId(id); setView('orders'); setReload((value) => value + 1) }} />}
           {view === 'orders' && ready && <Orders reload={reload} selectedId={selectedId} onSelect={setSelectedId} onChanged={() => setReload((value) => value + 1)} />}
+          {view === 'sales' && ready && <Sales reload={reload} onOpenOrder={(id) => { setSelectedId(id); setView('orders') }} />}
         </div>
       </section>
     </div>

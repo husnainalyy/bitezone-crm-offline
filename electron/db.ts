@@ -47,9 +47,34 @@ async function rawDb() {
 
 async function ensureSchema(db: PGlite) {
   const check = await db.query<{ ready: boolean }>(`select to_regclass('public.orders') is not null as ready`)
-  if (check.rows[0]?.ready) return
-  const sql = fs.readFileSync(path.join(__dirname, '../../schema/local.sql'), 'utf8')
-  await db.exec(sql)
+  if (!check.rows[0]?.ready) {
+    const sql = fs.readFileSync(path.join(__dirname, '../../schema/local.sql'), 'utf8')
+    await db.exec(sql)
+    return
+  }
+  await db.exec(`
+    do $$
+    declare c name;
+    begin
+      for c in
+        select conname from pg_constraint
+        where conrelid = 'public.orders'::regclass
+          and contype = 'c'
+          and pg_get_constraintdef(oid) ilike '%table_id%'
+          and pg_get_constraintdef(oid) ilike '%dine_in%'
+          and pg_get_constraintdef(oid) ilike '%is not null%'
+      loop
+        execute format('alter table public.orders drop constraint %I', c);
+      end loop;
+      if not exists (
+        select 1 from pg_constraint
+        where conrelid = 'public.orders'::regclass and conname = 'orders_table_only_for_dine_in'
+      ) then
+        alter table public.orders add constraint orders_table_only_for_dine_in
+          check (table_id is null or order_type = 'dine_in');
+      end if;
+    end $$;
+  `)
 }
 
 export function getPool(): Db {

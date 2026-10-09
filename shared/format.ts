@@ -16,6 +16,17 @@ export function businessDate(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 }
 
+export function formatDay(day: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Karachi',
+    weekday: 'short',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(`${day}T12:00:00+05:00`))
+}
+
 export function formatWhen(iso: string) {
   return new Intl.DateTimeFormat('en-GB', {
     timeZone: 'Asia/Karachi',

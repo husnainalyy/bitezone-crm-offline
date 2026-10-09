@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
 import type { ConfigInput, OrderFilter, PlaceOrderInput } from '../shared/types'
-import { discardOrder, getOrder, listOrders, loadCounter, placeOrder } from './catalog'
+import { discardOrder, getDaySales, getOrder, listOrders, loadCounter, placeOrder } from './catalog'
 import { configForm, readConfig, saveConfig } from './config'
 import { closeDb, explainDb, getStatus } from './db'
 import { exclusive } from './lock'
@@ -54,6 +54,7 @@ app.whenReady().then(() => {
   ipcMain.handle('orders:list', (_event, filter: OrderFilter) => guard(() => listOrders(filter)))
   ipcMain.handle('order:get', (_event, id: string) => guard(() => getOrder(id)))
   ipcMain.handle('order:discard', (_event, id: string) => guard(() => discardOrder(id)))
+  ipcMain.handle('sales:day', (_event, day: string) => guard(() => getDaySales(day)))
   ipcMain.handle('sync', () => guard(() => syncNow()))
   createWindow()
   app.on('activate', () => {

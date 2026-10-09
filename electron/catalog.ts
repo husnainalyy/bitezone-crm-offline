@@ -1,7 +1,7 @@
 import crypto from 'node:crypto'
 import type { Db } from './db'
 import { dateOnly, estimateTotals, iso, money, roundMoney } from '../shared/format'
-import type { CounterData, OrderDetail, OrderFilter, OrderSummary, OrderType, PlaceOrderInput, SyncStatus } from '../shared/types'
+import type { CounterData, DaySales, OrderDetail, OrderFilter, OrderSummary, OrderType, PlaceOrderInput, SyncStatus } from '../shared/types'
 import { getPool, withTx } from './db'
 import { exclusive } from './lock'
 
@@ -321,4 +321,77 @@ export function discardOrder(id: string) {
     if (stillUsed.rowCount) return
     await client.query(`delete from customers where id = $1 and sync_status = 'pending'`, [order.customer_id])
   }))
+}
+
+export async function getDaySales(day: string): Promise<DaySales> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('Pick a valid day.')
+  const pool = getPool()
+  const dayFilter = `(created_at at time zone 'Asia/Karachi')::date = $1::date`
+  const summary = await pool.query<{
+    orders: string | number
+    cancelled: string | number
+    sales: string
+    discounts: string
+  }>(`
+    select
+      count(*) filter (where status <> 'cancelled') as orders,
+      count(*) filter (where status = 'cancelled') as cancelled,
+      coalesce(sum(total) filter (where status <> 'cancelled'), 0) as sales,
+      coalesce(sum(discount_amount) filter (where status <> 'cancelled'), 0) as discounts
+    from orders
+    where ${dayFilter}
+  `, [day])
+  const byType = await pool.query<{ order_type: string; orders: string | number; sales: string }>(`
+    select order_type, count(*) as orders, coalesce(sum(total), 0) as sales
+    from orders
+    where ${dayFilter} and status <> 'cancelled'
+    group by order_type
+    order by order_type
+  `, [day])
+  const rows = await pool.query<{
+    id: string
+    local_number: number
+    order_number: string | null
+    order_type: string
+    status: string
+    total: string
+    created_at: Date
+    table_name: string | null
+    customer_name: string | null
+  }>(`
+    select o.id, o.local_number, o.order_number, o.order_type, o.status, o.total, o.created_at,
+           t.name as table_name, c.name as customer_name
+    from orders o
+    left join restaurant_tables t on t.id = o.table_id
+    left join customers c on c.id = o.customer_id
+    where (o.created_at at time zone 'Asia/Karachi')::date = $1::date
+    order by o.created_at desc
+    limit 300
+  `, [day])
+  const sales = money(summary.rows[0]?.sales)
+  const orders = Number(summary.rows[0]?.orders ?? 0)
+  return {
+    day,
+    sales,
+    orders,
+    cancelled: Number(summary.rows[0]?.cancelled ?? 0),
+    average: orders ? roundMoney(sales / orders) : 0,
+    discounts: money(summary.rows[0]?.discounts),
+    byType: byType.rows.map((row) => ({
+      type: orderType(row.order_type),
+      orders: Number(row.orders),
+      sales: money(row.sales),
+    })),
+    rows: rows.rows.map((row) => ({
+      id: row.id,
+      localNumber: row.local_number,
+      orderNumber: row.order_number == null ? null : Number(row.order_number),
+      orderType: orderType(row.order_type),
+      status: row.status,
+      total: money(row.total),
+      createdAt: iso(row.created_at),
+      tableName: row.table_name,
+      customerName: row.customer_name,
+    })),
+  }
 }

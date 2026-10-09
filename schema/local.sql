@@ -113,7 +113,7 @@ create table if not exists orders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   completed_at timestamptz,
-  check ((order_type = 'dine_in' and table_id is not null) or (order_type <> 'dine_in' and table_id is null))
+  check (table_id is null or order_type = 'dine_in')
 );
 
 create index if not exists orders_created_idx on orders (created_at desc);

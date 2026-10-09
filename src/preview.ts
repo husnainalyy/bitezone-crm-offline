@@ -1,5 +1,5 @@
-import type { AppStatus, ConfigForm, ConfigInput, CounterData, DesktopApi, OrderDetail, OrderFilter, OrderSummary, PlaceOrderInput } from '@shared/types'
-import { estimateTotals, money } from '@shared/format'
+import type { AppStatus, ConfigForm, ConfigInput, CounterData, DaySales, DesktopApi, OrderDetail, OrderFilter, OrderSummary, PlaceOrderInput } from '@shared/types'
+import { businessDate, estimateTotals, money, roundMoney } from '@shared/format'
 
 const burger = '6d5b6a30-4c1a-4c1a-8c1a-6d5b6a304c1a'
 const drink = '7e6c7b41-5d2b-4d2b-9d2b-7e6c7b415d2b'
@@ -112,6 +112,38 @@ export function installPreview() {
     discardOrder: async (id: string) => {
       const index = orders.findIndex((order) => order.id === id)
       if (index >= 0) orders.splice(index, 1)
+    },
+    getDaySales: async (day: string): Promise<DaySales> => {
+      const rows = orders.filter((order) => businessDate(new Date(order.createdAt)) === day)
+      const active = rows.filter((order) => order.status !== 'cancelled')
+      const sales = roundMoney(active.reduce((sum, order) => sum + order.total, 0))
+      const byTypeMap = new Map<string, { orders: number; sales: number }>()
+      for (const order of active) {
+        const current = byTypeMap.get(order.orderType) ?? { orders: 0, sales: 0 }
+        current.orders += 1
+        current.sales = roundMoney(current.sales + order.total)
+        byTypeMap.set(order.orderType, current)
+      }
+      return {
+        day,
+        sales,
+        orders: active.length,
+        cancelled: rows.length - active.length,
+        average: active.length ? roundMoney(sales / active.length) : 0,
+        discounts: roundMoney(active.reduce((sum, order) => sum + order.discount, 0)),
+        byType: [...byTypeMap.entries()].map(([type, value]) => ({ type: type as DaySales['byType'][number]['type'], ...value })),
+        rows: rows.map((order) => ({
+          id: order.id,
+          localNumber: order.localNumber,
+          orderNumber: order.orderNumber,
+          orderType: order.orderType,
+          status: order.status,
+          total: order.total,
+          createdAt: order.createdAt,
+          tableName: order.tableName,
+          customerName: order.customerName,
+        })),
+      }
     },
     sync: async () => ({ online: false, message: 'Preview mode has no database. Run the desktop app to sync.', menuItems: counter.items.length, tables: counter.tables.length, ordersPulled: 0, ordersPushed: 0, failures: [] }),
   }

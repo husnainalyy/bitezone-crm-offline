@@ -131,6 +131,29 @@ export interface SyncReport {
   failures: { id: string; label: string; message: string }[]
 }
 
+export interface DaySalesOrder {
+  id: string
+  localNumber: number
+  orderNumber: number | null
+  orderType: OrderType
+  status: string
+  total: number
+  createdAt: string
+  tableName: string | null
+  customerName: string | null
+}
+
+export interface DaySales {
+  day: string
+  sales: number
+  orders: number
+  cancelled: number
+  average: number
+  discounts: number
+  byType: { type: OrderType; orders: number; sales: number }[]
+  rows: DaySalesOrder[]
+}
+
 export interface DesktopApi {
   getStatus(): Promise<AppStatus>
   getConfigForm(): Promise<ConfigForm>
@@ -140,5 +163,6 @@ export interface DesktopApi {
   listOrders(filter: OrderFilter): Promise<OrderSummary[]>
   getOrder(id: string): Promise<OrderDetail>
   discardOrder(id: string): Promise<void>
+  getDaySales(day: string): Promise<DaySales>
   sync(): Promise<SyncReport>
 }
