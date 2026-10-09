@@ -1,0 +1,32 @@
+{
+  "name": "bite-zone-crm-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "main": "dist-electron/electron/main.js",
+  "description": "BiteZone counter. Takes orders on this computer and syncs them to the online CRM.",
+  "scripts": {
+    "dev": "npm run build:electron && concurrently -k -n web,desktop \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"wait-on http://127.0.0.1:5173 && BITEZONE_DEV=1 electron .\"",
+    "build:electron": "tsc -p tsconfig.electron.json",
+    "build": "npm run build:electron && vite build",
+    "start": "electron .",
+    "typecheck": "tsc -p tsconfig.electron.json --noEmit && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "@supabase/supabase-js": "^2.95.0",
+    "lucide-react": "^0.563.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "electron": "^33.4.11",
+    "typescript": "^5.9.3",
+    "vite": "^6.3.6",
+    "wait-on": "^8.0.4"
+  }
+}
