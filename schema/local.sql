@@ -113,11 +113,25 @@ create table if not exists orders (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   completed_at timestamptz,
+  edited_at timestamptz,
+  voided_at timestamptz,
   check (table_id is null or order_type = 'dine_in')
 );
 
 create index if not exists orders_created_idx on orders (created_at desc);
 create index if not exists orders_open_table_idx on orders (table_id) where table_id is not null and status not in ('completed', 'cancelled');
+
+create table if not exists order_events (
+  id uuid primary key,
+  order_id uuid not null references orders (id) on delete cascade,
+  kind text not null check (kind in ('created', 'edited', 'voided')),
+  summary text not null,
+  before_json jsonb,
+  after_json jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists order_events_order_idx on order_events (order_id, created_at desc);
 
 create table if not exists order_items (
   id uuid primary key,

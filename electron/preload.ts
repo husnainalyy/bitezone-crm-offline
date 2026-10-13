@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ConfigInput, DesktopApi, OrderFilter, PlaceOrderInput } from '../shared/types'
+import type { ConfigInput, DesktopApi, OrderFilter, PlaceOrderInput, UpdateOrderInput } from '../shared/types'
 
 const api: DesktopApi = {
   getStatus: () => ipcRenderer.invoke('status'),
@@ -7,9 +7,10 @@ const api: DesktopApi = {
   saveConfig: (input: ConfigInput) => ipcRenderer.invoke('config:save', input),
   loadCounter: () => ipcRenderer.invoke('counter:load'),
   placeOrder: (input: PlaceOrderInput) => ipcRenderer.invoke('order:place', input),
+  updateOrder: (input: UpdateOrderInput) => ipcRenderer.invoke('order:update', input),
   listOrders: (filter: OrderFilter) => ipcRenderer.invoke('orders:list', filter),
   getOrder: (id: string) => ipcRenderer.invoke('order:get', id),
-  discardOrder: (id: string) => ipcRenderer.invoke('order:discard', id),
+  voidOrder: (id: string) => ipcRenderer.invoke('order:void', id),
   getDaySales: (day: string) => ipcRenderer.invoke('sales:day', day),
   sync: () => ipcRenderer.invoke('sync'),
 }

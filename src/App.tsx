@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { ClipboardList, ChartColumn, RefreshCw, Settings, UtensilsCrossed } from 'lucide-react'
 import type { AppStatus } from '@shared/types'
 import { formatWhen } from '@shared/format'
@@ -30,6 +30,8 @@ export function App() {
   const [view, setView] = useState<View>('counter')
   const [reload, setReload] = useState(0)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [printId, setPrintId] = useState<string | null>(null)
   const [notice, setNotice] = useState('')
   const [noticeError, setNoticeError] = useState(false)
   const [syncing, setSyncing] = useState(false)
@@ -38,6 +40,8 @@ export function App() {
     if (!window.bitezone) return
     void window.bitezone.getStatus().then(setStatus)
   }, [reload])
+
+  const clearPrint = useCallback(() => setPrintId(null), [])
 
   async function sync() {
     if (syncing) return
@@ -69,8 +73,8 @@ export function App() {
         <div className="brand">BiteZone</div>
         <p className="brand-note">Counter</p>
         <nav>
-          <button className={view === 'counter' ? 'active' : ''} disabled={!ready} onClick={() => setView('counter')}><UtensilsCrossed size={18} />New order</button>
-          <button className={view === 'orders' ? 'active' : ''} disabled={!ready} onClick={() => setView('orders')}>
+          <button className={view === 'counter' && !editingId ? 'active' : ''} disabled={!ready} onClick={() => { setEditingId(null); setView('counter') }}><UtensilsCrossed size={18} />New order</button>
+          <button className={view === 'orders' ? 'active' : ''} disabled={!ready} onClick={() => { setEditingId(null); setView('orders') }}>
             <ClipboardList size={18} />Orders
             {status && status.pendingCount > 0 ? <span className="count">{status.pendingCount}</span> : null}
           </button>
@@ -86,7 +90,7 @@ export function App() {
       <section className="main">
         <header className="topbar">
           <div>
-            <strong>{view === 'orders' ? 'Orders' : view === 'sales' ? 'Sales' : view === 'setup' ? 'Online sync' : 'New order'}</strong>
+            <strong>{view === 'orders' ? 'Orders' : view === 'sales' ? 'Sales' : view === 'setup' ? 'Online sync' : editingId ? 'Edit order' : 'New order'}</strong>
             <p>{status?.lastSyncedAt ? `Last sync ${formatWhen(status.lastSyncedAt)}` : 'Not synced yet'}</p>
           </div>
           <button className="sync" disabled={syncing || !ready} onClick={() => void sync()}>
@@ -99,8 +103,8 @@ export function App() {
           {!status && <div className="empty">Opening the counter…</div>}
           {status?.localError && view !== 'setup' && <div className="empty"><h2>The counter could not open its saved orders</h2><p>Close BiteZone and open it again. Orders stay on this computer.</p><p>{status.localError}</p></div>}
           {view === 'setup' && <Setup status={status} onSaved={(next) => { setStatus(next); setView('counter') }} />}
-          {view === 'counter' && ready && <Counter reload={reload} onPlaced={(id) => { setSelectedId(id); setView('orders'); setReload((value) => value + 1) }} />}
-          {view === 'orders' && ready && <Orders reload={reload} selectedId={selectedId} onSelect={setSelectedId} onChanged={() => setReload((value) => value + 1)} />}
+          {view === 'counter' && ready && <Counter reload={reload} editingId={editingId} onCancelEdit={() => { setEditingId(null); setView('orders') }} onPlaced={(id, revised) => { setEditingId(null); setSelectedId(id); setPrintId(revised ? id : null); setView('orders'); setReload((value) => value + 1) }} />}
+          {view === 'orders' && ready && <Orders reload={reload} selectedId={selectedId} printId={printId} onSelect={setSelectedId} onChanged={() => setReload((value) => value + 1)} onEdit={(id) => { setEditingId(id); setView('counter') }} onPrinted={clearPrint} />}
           {view === 'sales' && ready && <Sales reload={reload} onOpenOrder={(id) => { setSelectedId(id); setView('orders') }} />}
         </div>
       </section>

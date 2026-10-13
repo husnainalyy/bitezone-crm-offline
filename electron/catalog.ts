@@ -1,12 +1,26 @@
 import crypto from 'node:crypto'
 import type { Db } from './db'
-import { dateOnly, estimateTotals, iso, money, roundMoney } from '../shared/format'
-import type { CounterData, DaySales, OrderDetail, OrderFilter, OrderSummary, OrderType, PlaceOrderInput, SyncStatus } from '../shared/types'
+import { dateOnly, estimateTotals, formatMoney, iso, money, orderItemName, roundMoney } from '../shared/format'
+import type {
+  CounterData,
+  DaySales,
+  OrderDetail,
+  OrderEvent,
+  OrderEventKind,
+  OrderFilter,
+  OrderSnapshot,
+  OrderSummary,
+  OrderType,
+  PlaceOrderInput,
+  SyncStatus,
+  UpdateOrderInput,
+} from '../shared/types'
 import { getPool, withTx } from './db'
 import { exclusive } from './lock'
 
-interface ItemRow { id: string; name: string; price: string; active: boolean; category_active: boolean }
+interface ItemRow { id: string; name: string; price: string; active: boolean; category_active: boolean; category_name: string }
 interface VariantRow { id: string; menu_item_id: string; name: string; price: string; active: boolean }
+interface PricedLine { menuItemId: string; variantId: string | null; quantity: number; notes: string; name: string; variantName: string | null; price: number }
 
 function syncStatus(value: string): SyncStatus {
   return value === 'synced' || value === 'failed' ? value : 'pending'
@@ -14,6 +28,127 @@ function syncStatus(value: string): SyncStatus {
 
 function orderType(value: string): OrderType {
   return value === 'takeaway' || value === 'delivery' ? value : 'dine_in'
+}
+
+function snapshotFrom(
+  totals: { subtotal: number; discount: number; tax: number; total: number },
+  fee: number,
+  notes: string,
+  lines: PricedLine[],
+): OrderSnapshot {
+  return {
+    total: totals.total,
+    subtotal: totals.subtotal,
+    discount: totals.discount,
+    tax: totals.tax,
+    deliveryFee: fee,
+    notes,
+    items: lines.map((line) => ({
+      name: line.name,
+      variantName: line.variantName,
+      quantity: line.quantity,
+      unitPrice: line.price,
+      lineTotal: roundMoney(line.price * line.quantity),
+      notes: line.notes,
+    })),
+  }
+}
+
+function asSnapshot(value: unknown): OrderSnapshot | null {
+  if (!value || typeof value !== 'object') return null
+  const row = value as Partial<OrderSnapshot>
+  if (!Array.isArray(row.items)) return null
+  return {
+    total: money(row.total),
+    subtotal: money(row.subtotal),
+    discount: money(row.discount),
+    tax: money(row.tax),
+    deliveryFee: money(row.deliveryFee),
+    notes: String(row.notes ?? ''),
+    items: row.items.map((item) => ({
+      name: String(item.name ?? 'Item'),
+      variantName: item.variantName == null ? null : String(item.variantName),
+      quantity: Number(item.quantity) || 0,
+      unitPrice: money(item.unitPrice),
+      lineTotal: money(item.lineTotal),
+      notes: String(item.notes ?? ''),
+    })),
+  }
+}
+
+function eventSummary(kind: OrderEventKind, before: OrderSnapshot | null, after: OrderSnapshot | null) {
+  if (kind === 'created' && after) return `Order placed · total ${formatMoney(after.total)}`
+  if (kind === 'voided' && before) return `Order voided · was ${formatMoney(before.total)}`
+  if (kind === 'edited' && before && after) {
+    if (before.total !== after.total) return `Items changed · total ${formatMoney(before.total)} → ${formatMoney(after.total)}`
+    return `Items changed · total ${formatMoney(after.total)}`
+  }
+  return kind === 'voided' ? 'Order voided' : kind === 'edited' ? 'Order edited' : 'Order placed'
+}
+
+async function writeEvent(
+  client: Db,
+  orderId: string,
+  kind: OrderEventKind,
+  before: OrderSnapshot | null,
+  after: OrderSnapshot | null,
+) {
+  await client.query(
+    `insert into order_events (id, order_id, kind, summary, before_json, after_json)
+     values ($1, $2, $3, $4, $5::jsonb, $6::jsonb)`,
+    [
+      crypto.randomUUID(),
+      orderId,
+      kind,
+      eventSummary(kind, before, after),
+      before ? JSON.stringify(before) : null,
+      after ? JSON.stringify(after) : null,
+    ],
+  )
+}
+
+async function loadOrderSnapshot(client: Db, orderId: string): Promise<OrderSnapshot | null> {
+  const order = await client.query<{
+    subtotal: string
+    discount_amount: string
+    tax_amount: string
+    delivery_fee: string
+    total: string
+    notes: string | null
+  }>(`select subtotal, discount_amount, tax_amount, delivery_fee, total, notes from orders where id = $1`, [orderId])
+  const row = order.rows[0]
+  if (!row) return null
+  const items = await client.query<{
+    item_name: string
+    variant_name: string | null
+    unit_price: string
+    quantity: number
+    line_total: string
+    notes: string | null
+    category_name: string | null
+  }>(`
+    select oi.item_name, oi.variant_name, oi.unit_price, oi.quantity, oi.line_total, oi.notes, c.name as category_name
+    from order_items oi
+    left join menu_items mi on mi.id = oi.menu_item_id
+    left join categories c on c.id = mi.category_id
+    where oi.order_id = $1
+    order by oi.item_name`, [orderId])
+  return {
+    total: money(row.total),
+    subtotal: money(row.subtotal),
+    discount: money(row.discount_amount),
+    tax: money(row.tax_amount),
+    deliveryFee: money(row.delivery_fee),
+    notes: row.notes ?? '',
+    items: items.rows.map((item) => ({
+      name: orderItemName(item.category_name ?? '', item.item_name),
+      variantName: item.variant_name,
+      quantity: item.quantity,
+      unitPrice: money(item.unit_price),
+      lineTotal: money(item.line_total),
+      notes: item.notes ?? '',
+    })),
+  }
 }
 
 export async function loadCounter(): Promise<CounterData> {
@@ -108,37 +243,49 @@ async function rememberGuest(client: Db, input: PlaceOrderInput) {
   return { customerId, addressId }
 }
 
+async function priceLines(client: Db, lines: PlaceOrderInput['lines']) {
+  if (!lines.length) throw new Error('Add at least one item.')
+  if (lines.length > 100) throw new Error('An order can have at most 100 lines.')
+  const ids = [...new Set(lines.map((line) => line.menuItemId))]
+  const items = await client.query<ItemRow>(`
+    select mi.id, mi.name, mi.price, mi.active, c.active as category_active, c.name as category_name
+    from menu_items mi join categories c on c.id = mi.category_id
+    where mi.id = any($1::uuid[])
+    for update of mi`, [ids])
+  const variants = await client.query<VariantRow>(`
+    select id, menu_item_id, name, price, active from menu_item_variants
+    where menu_item_id = any($1::uuid[]) for update`, [ids])
+  const byItem = new Map(items.rows.map((row) => [row.id, row]))
+  return lines.map((line) => {
+    if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 999) throw new Error('Quantity must be a whole number from 1 to 999.')
+    const item = byItem.get(line.menuItemId)
+    if (!item?.active || !item.category_active) throw new Error('A menu item is no longer available. Sync, then choose it again.')
+    const choices = variants.rows.filter((row) => row.menu_item_id === item.id && row.active)
+    let price = money(item.price)
+    let variantName: string | null = null
+    if (line.variantId) {
+      const variant = choices.find((row) => row.id === line.variantId)
+      if (!variant) throw new Error(`Choose an available option for ${orderItemName(item.category_name, item.name)}.`)
+      price = money(variant.price)
+      variantName = variant.name
+    } else if (choices.length) {
+      throw new Error(`Choose an option for ${orderItemName(item.category_name, item.name)}.`)
+    }
+    return { ...line, name: orderItemName(item.category_name, item.name), variantName, price, notes: line.notes.trim().slice(0, 1000) }
+  })
+}
+
+function chargeFor(mode: PlaceOrderInput['discountMode'], value: number, subtotal: number) {
+  const requested = mode === 'percent'
+    ? roundMoney(subtotal * Math.min(100, Math.max(0, Number(value) || 0)) / 100)
+    : roundMoney(Math.max(0, Number(value) || 0))
+  if (requested > subtotal) throw new Error('The discount cannot be more than the subtotal.')
+  return requested
+}
+
 export function placeOrder(input: PlaceOrderInput) {
   return exclusive(() => withTx(async (client) => {
-    if (!input.lines.length) throw new Error('Add at least one item.')
-    if (input.lines.length > 100) throw new Error('An order can have at most 100 lines.')
-    const ids = [...new Set(input.lines.map((line) => line.menuItemId))]
-    const items = await client.query<ItemRow>(`
-      select mi.id, mi.name, mi.price, mi.active, c.active as category_active
-      from menu_items mi join categories c on c.id = mi.category_id
-      where mi.id = any($1::uuid[])
-      for update of mi`, [ids])
-    const variants = await client.query<VariantRow>(`
-      select id, menu_item_id, name, price, active from menu_item_variants
-      where menu_item_id = any($1::uuid[]) for update`, [ids])
-    const byItem = new Map(items.rows.map((row) => [row.id, row]))
-    const priced = input.lines.map((line) => {
-      if (!Number.isInteger(line.quantity) || line.quantity < 1 || line.quantity > 999) throw new Error('Quantity must be a whole number from 1 to 999.')
-      const item = byItem.get(line.menuItemId)
-      if (!item?.active || !item.category_active) throw new Error('A menu item is no longer available. Sync, then choose it again.')
-      const choices = variants.rows.filter((row) => row.menu_item_id === item.id && row.active)
-      let price = money(item.price)
-      let variantName: string | null = null
-      if (line.variantId) {
-        const variant = choices.find((row) => row.id === line.variantId)
-        if (!variant) throw new Error(`Choose an available option for ${item.name}.`)
-        price = money(variant.price)
-        variantName = variant.name
-      } else if (choices.length) {
-        throw new Error(`Choose an option for ${item.name}.`)
-      }
-      return { ...line, name: item.name, variantName, price, notes: line.notes.trim().slice(0, 1000) }
-    })
+    const priced = await priceLines(client, input.lines)
 
     let tableId: string | null = null
     if (input.orderType === 'dine_in' && input.tableId) {
@@ -153,10 +300,7 @@ export function placeOrder(input: PlaceOrderInput) {
     const settings = await client.query<{ tax_rate: string }>(`select tax_rate from restaurant_settings where id = 1`)
     const taxRate = money(settings.rows[0]?.tax_rate)
     const subtotal = roundMoney(priced.reduce((sum, line) => sum + line.price * line.quantity, 0))
-    const requested = input.discountMode === 'percent'
-      ? roundMoney(subtotal * Math.min(100, Math.max(0, Number(input.discountValue) || 0)) / 100)
-      : roundMoney(Math.max(0, Number(input.discountValue) || 0))
-    if (requested > subtotal) throw new Error('The discount cannot be more than the subtotal.')
+    const requested = chargeFor(input.discountMode, input.discountValue, subtotal)
     const fee = input.orderType === 'delivery' ? roundMoney(Math.max(0, Number(input.deliveryFee) || 0)) : 0
     const totals = estimateTotals(priced.map((line) => ({ quantity: line.quantity, price: line.price })), requested, taxRate, fee)
     const notes = input.notes.trim().slice(0, 2000)
@@ -203,13 +347,71 @@ export function placeOrder(input: PlaceOrderInput) {
         [crypto.randomUUID(), orderId, input.guest.address.trim(), input.guest.phone.trim(), input.guest.area.trim(), input.guest.landmark.trim() || null, input.guest.instructions.trim() || null],
       )
     }
+    await writeEvent(client, orderId, 'created', null, snapshotFrom(totals, fee, notes, priced))
     return { id: orderId }
+  }))
+}
+
+export function updateOrder(input: UpdateOrderInput) {
+  return exclusive(() => withTx(async (client) => {
+    const existing = await client.query<{
+      id: string
+      status: string
+      sync_status: string
+      origin: 'local' | 'server'
+      order_number: string | null
+      version: number
+      client_operation_id: string | null
+      payload: Record<string, unknown> | null
+      delivery_fee: string
+      tax_rate: string
+    }>(`
+      select id, status, sync_status, origin, order_number, version, client_operation_id, payload, delivery_fee, tax_rate
+      from orders where id = $1 for update`, [input.id])
+    const order = existing.rows[0]
+    if (!order) throw new Error('That order is not on this computer.')
+    if (order.status === 'completed' || order.status === 'cancelled') throw new Error('A finished order cannot be changed.')
+    if (order.status !== 'placed') throw new Error('The kitchen already has this order, so the items stay as they are.')
+    const before = await loadOrderSnapshot(client, order.id)
+    const priced = await priceLines(client, input.lines)
+    const subtotal = roundMoney(priced.reduce((sum, line) => sum + line.price * line.quantity, 0))
+    const requested = chargeFor(input.discountMode, input.discountValue, subtotal)
+    const fee = money(order.delivery_fee)
+    const totals = estimateTotals(priced.map((line) => ({ quantity: line.quantity, price: line.price })), requested, money(order.tax_rate), fee)
+    const notes = input.notes.trim().slice(0, 2000)
+    const items = priced.map((line) => ({ menu_item_id: line.menuItemId, variant_id: line.variantId, quantity: line.quantity, notes: line.notes, expected_price: line.price }))
+    const previous = order.payload && typeof order.payload === 'object' ? order.payload : {}
+    const onlineCopy = order.sync_status === 'synced' || order.origin === 'server' || order.order_number != null || previous.operation === 'update_order'
+    const operationId = order.sync_status === 'synced' ? crypto.randomUUID() : (order.client_operation_id ?? crypto.randomUUID())
+    const payload = onlineCopy
+      ? { operation: 'update_order', id: order.id, version: order.version, items, notes, discount_amount: totals.discount }
+      : { ...previous, items, notes, discount_amount: totals.discount }
+    await client.query(
+      `update orders set
+         subtotal = $2, discount_amount = $3, tax_amount = $4, total = $5, notes = $6,
+         sync_status = 'pending', sync_error = null, client_operation_id = $7, payload = $8::jsonb,
+         edited_at = now(), updated_at = now()
+       where id = $1`,
+      [order.id, totals.subtotal, totals.discount, totals.tax, totals.total, notes || null, operationId, JSON.stringify(payload)],
+    )
+    await client.query(`delete from order_items where order_id = $1`, [order.id])
+    for (const line of priced) {
+      await client.query(
+        `insert into order_items (id, order_id, menu_item_id, variant_id, item_name, variant_name, unit_price, quantity, line_total, notes)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [crypto.randomUUID(), order.id, line.menuItemId, line.variantId, line.name, line.variantName, line.price, line.quantity, roundMoney(line.price * line.quantity), line.notes || null],
+      )
+    }
+    const after = snapshotFrom(totals, fee, notes, priced)
+    await writeEvent(client, order.id, 'edited', before, after)
+    return { id: order.id }
   }))
 }
 
 const summarySql = `
   select o.id, o.local_number, o.order_number, o.order_type, o.status, o.payment_status, o.total,
-         o.sync_status, o.sync_error, o.origin, o.created_at, t.name as table_name, c.name as customer_name
+         o.sync_status, o.sync_error, o.origin, o.created_at, o.edited_at, o.voided_at,
+         t.name as table_name, c.name as customer_name
   from orders o
   left join restaurant_tables t on t.id = o.table_id
   left join customers c on c.id = o.customer_id`
@@ -226,6 +428,8 @@ interface SummaryRow {
   sync_error: string | null
   origin: 'local' | 'server'
   created_at: Date
+  edited_at: Date | null
+  voided_at: Date | null
   table_name: string | null
   customer_name: string | null
 }
@@ -243,6 +447,8 @@ function toSummary(row: SummaryRow): OrderSummary {
     syncError: row.sync_error,
     origin: row.origin,
     createdAt: iso(row.created_at),
+    editedAt: row.edited_at ? iso(row.edited_at) : null,
+    voidedAt: row.voided_at ? iso(row.voided_at) : null,
     tableName: row.table_name,
     customerName: row.customer_name,
   }
@@ -252,7 +458,7 @@ export async function listOrders(filter: OrderFilter): Promise<OrderSummary[]> {
   const where = filter === 'open'
     ? `where o.status not in ('completed', 'cancelled')`
     : filter === 'unsynced'
-      ? `where o.origin = 'local' and o.sync_status in ('pending', 'failed')`
+      ? `where o.origin = 'local' and o.status <> 'cancelled' and o.sync_status in ('pending', 'failed')`
       : ''
   const result = await getPool().query<SummaryRow>(`${summarySql} ${where} order by o.created_at desc limit 300`)
   return result.rows.map(toSummary)
@@ -282,10 +488,27 @@ export async function getOrder(id: string): Promise<OrderDetail> {
     `select name, phone, address, receipt_footer from restaurant_settings where id = 1`,
   )
   const setting = settings.rows[0]
-  const items = await getPool().query<{ id: string; item_name: string; variant_name: string | null; unit_price: string; quantity: number; line_total: string; notes: string | null }>(
-    `select id, item_name, variant_name, unit_price, quantity, line_total, notes from order_items where order_id = $1`,
+  const items = await getPool().query<{ id: string; menu_item_id: string | null; variant_id: string | null; item_name: string; variant_name: string | null; unit_price: string; quantity: number; line_total: string; notes: string | null; category_name: string | null }>(
+    `select oi.id, oi.menu_item_id, oi.variant_id, oi.item_name, oi.variant_name, oi.unit_price, oi.quantity, oi.line_total, oi.notes, c.name as category_name
+     from order_items oi
+     left join menu_items mi on mi.id = oi.menu_item_id
+     left join categories c on c.id = mi.category_id
+     where oi.order_id = $1`,
     [id],
   )
+  const events = await getPool().query<{
+    id: string
+    kind: string
+    summary: string
+    before_json: unknown
+    after_json: unknown
+    created_at: Date
+  }>(`
+    select id, kind, summary, before_json, after_json, created_at
+    from order_events
+    where order_id = $1
+    order by created_at desc
+  `, [id])
   return {
     ...toSummary(row),
     notes: row.notes ?? '',
@@ -302,24 +525,58 @@ export async function getOrder(id: string): Promise<OrderDetail> {
     restaurantPhone: setting?.phone || '',
     restaurantAddress: setting?.address || '',
     receiptFooter: setting?.receipt_footer || 'Thank you. Visit again.',
-    items: items.rows.map((item) => ({ id: item.id, name: item.item_name, variantName: item.variant_name, unitPrice: money(item.unit_price), quantity: item.quantity, lineTotal: money(item.line_total), notes: item.notes ?? '' })),
+    items: items.rows.map((item) => ({
+      id: item.id,
+      menuItemId: item.menu_item_id,
+      variantId: item.variant_id,
+      name: orderItemName(item.category_name ?? '', item.item_name),
+      variantName: item.variant_name,
+      unitPrice: money(item.unit_price),
+      quantity: item.quantity,
+      lineTotal: money(item.line_total),
+      notes: item.notes ?? '',
+    })),
+    events: events.rows.map((event): OrderEvent => ({
+      id: event.id,
+      kind: event.kind === 'edited' || event.kind === 'voided' ? event.kind : 'created',
+      summary: event.summary,
+      before: asSnapshot(event.before_json),
+      after: asSnapshot(event.after_json),
+      createdAt: iso(event.created_at),
+    })),
   }
 }
 
-export function discardOrder(id: string) {
+export function voidOrder(id: string) {
   return exclusive(() => withTx(async (client) => {
-    const existing = await client.query<{ customer_id: string | null; origin: string; sync_status: string }>(
-      `select customer_id, origin, sync_status from orders where id = $1 for update`,
+    const existing = await client.query<{
+      origin: string
+      sync_status: string
+      order_number: string | null
+      status: string
+      voided_at: Date | null
+    }>(
+      `select origin, sync_status, order_number, status, voided_at from orders where id = $1 for update`,
       [id],
     )
     const order = existing.rows[0]
     if (!order) return
-    if (order.origin !== 'local' || order.sync_status === 'synced') throw new Error('This order is already in the online CRM. Change it there.')
-    await client.query(`delete from orders where id = $1`, [id])
-    if (!order.customer_id) return
-    const stillUsed = await client.query(`select 1 from orders where customer_id = $1`, [order.customer_id])
-    if (stillUsed.rowCount) return
-    await client.query(`delete from customers where id = $1 and sync_status = 'pending'`, [order.customer_id])
+    if (order.voided_at || order.status === 'cancelled') throw new Error('This order is already voided.')
+    if (order.origin !== 'local' || order.sync_status === 'synced' || order.order_number != null) {
+      throw new Error('This order is already in the online CRM. Cancel it there.')
+    }
+    const before = await loadOrderSnapshot(client, id)
+    await client.query(
+      `update orders set
+         status = 'cancelled',
+         voided_at = now(),
+         sync_status = 'synced',
+         sync_error = null,
+         updated_at = now()
+       where id = $1`,
+      [id],
+    )
+    await writeEvent(client, id, 'voided', before, null)
   }))
 }
 

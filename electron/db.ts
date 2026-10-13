@@ -74,6 +74,18 @@ async function ensureSchema(db: PGlite) {
           check (table_id is null or order_type = 'dine_in');
       end if;
     end $$;
+    alter table orders add column if not exists edited_at timestamptz;
+    alter table orders add column if not exists voided_at timestamptz;
+    create table if not exists order_events (
+      id uuid primary key,
+      order_id uuid not null references orders (id) on delete cascade,
+      kind text not null check (kind in ('created', 'edited', 'voided')),
+      summary text not null,
+      before_json jsonb,
+      after_json jsonb,
+      created_at timestamptz not null default now()
+    );
+    create index if not exists order_events_order_idx on order_events (order_id, created_at desc);
   `)
 }
 
@@ -112,7 +124,7 @@ export async function getStatus(): Promise<AppStatus> {
     await rawDb()
     const meta = await getPool().query<{ pending: string | number; last_synced_at: unknown; last_error: string | null; name: string }>(`
       select
-        (select count(*) from orders where origin = 'local' and sync_status in ('pending', 'failed')) as pending,
+        (select count(*) from orders where origin = 'local' and status <> 'cancelled' and sync_status in ('pending', 'failed')) as pending,
         (select last_synced_at from sync_state where id = 1) as last_synced_at,
         (select last_error from sync_state where id = 1) as last_error,
         (select name from restaurant_settings where id = 1) as name

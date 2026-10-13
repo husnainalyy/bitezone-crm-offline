@@ -86,7 +86,7 @@ export function PrintSlip({ kind, order, onClose }: { kind: 'kitchen' | 'bill'; 
               <div className="slip-name">{order.restaurantName || 'BiteZone'}</div>
               {kind === 'bill' && order.restaurantAddress && <div className="slip-meta">{order.restaurantAddress}</div>}
               {kind === 'bill' && order.restaurantPhone && <div className="slip-meta">{order.restaurantPhone}</div>}
-              <div className="slip-title">{kind === 'kitchen' ? 'KITCHEN ORDER' : 'CUSTOMER BILL'}</div>
+              <div className="slip-title">{order.editedAt ? 'REVISED ' : ''}{kind === 'kitchen' ? 'KITCHEN ORDER' : 'CUSTOMER BILL'}</div>
             </header>
             <hr className="slip-rule" />
             <div className="slip-row"><span>Order</span><b>{orderLabel(order.orderNumber, order.localNumber)}</b></div>

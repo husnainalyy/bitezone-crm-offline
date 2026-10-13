@@ -129,7 +129,7 @@ dl { margin: 0; display: flex; flex-direction: column; gap: 8px; }
 dl div { color: var(--muted); }
 .grand, .grand dt, .grand dd { color: var(--text); font-size: 18px; }
 .discount { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.place { width: 100%; justify-content: center; }
+.place, .cart-foot .secondary { width: 100%; justify-content: center; }
 .modal { position: fixed; inset: 0; background: var(--modal-shade); display: grid; place-items: center; padding: 24px; }
 .modal-card { width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 48px rgba(0, 0, 0, .18); }
 .slip-card { width: min(460px, 100%); max-height: calc(100dvh - 48px); overflow: auto; }
@@ -154,6 +154,24 @@ dl div { color: var(--muted); }
 .pill { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; font-size: 12px; height: fit-content; }
 .pill.pending { color: var(--warn); }
 .pill.synced { color: var(--good); }
+.history { margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
+.history h3 { font-size: 14px; font-weight: 600; }
+.history ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.history-toggle { width: 100%; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); text-align: left; }
+.history-toggle:disabled { opacity: 1; cursor: default; }
+.history-toggle:not(:disabled):hover { background: var(--hover); }
+.history-toggle > span:first-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.history-toggle em { font-style: normal; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.history-event.voided .history-toggle em { color: var(--bad); }
+.history-event.edited .history-toggle em { color: var(--warn); }
+.history-diff { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 2px 4px; }
+.history-snap { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--cart); display: flex; flex-direction: column; gap: 6px; }
+.history-snap ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.history-snap li { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.history-snap p { margin: 0; color: var(--muted); font-size: 13px; }
+@media (max-width: 640px) {
+  .history-diff { grid-template-columns: 1fr; }
+}
 .setup { max-width: 820px; margin: 0 auto; width: 100%; overflow: auto; }
 .panel { border: 1px solid var(--line); border-radius: 16px; padding: 18px; background: var(--panel); }
 .panel p, .setup-intro p { color: var(--muted); }

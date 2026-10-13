@@ -154,7 +154,8 @@ async function pull(client: Db, data: Bootstrap) {
          tax_amount = excluded.tax_amount, tax_rate = excluded.tax_rate, delivery_fee = excluded.delivery_fee, total = excluded.total,
          payment_status = excluded.payment_status, paid_amount = excluded.paid_amount, notes = excluded.notes, version = excluded.version,
          sync_status = 'synced', sync_error = null, updated_at = excluded.updated_at, completed_at = excluded.completed_at
-       where orders.sync_status <> 'pending'
+       where orders.sync_status = 'synced'
+          or (orders.sync_status = 'failed' and coalesce(orders.payload->>'operation', '') <> 'update_order')
        returning id`,
       [
         row.id, row.order_number == null ? null : Number(row.order_number), row.order_type, row.order_source, text(row.table_id), text(row.customer_id),
@@ -205,7 +206,7 @@ async function push(supabase: SupabaseClient, deviceId: string, userId: string) 
   const waiting = await pool.query<{ id: string; local_number: number; order_number: string | null; client_operation_id: string; payload: Record<string, unknown>; customer_id: string | null }>(`
     select id, local_number, order_number, client_operation_id, payload, customer_id
     from orders
-    where origin = 'local' and sync_status in ('pending', 'failed')
+    where sync_status in ('pending', 'failed') and status <> 'cancelled'
     order by created_at asc`)
   let ordersPushed = 0
   const failures: SyncReport['failures'] = []
@@ -235,7 +236,11 @@ async function push(supabase: SupabaseClient, deviceId: string, userId: string) 
           }
         }
       }
-      const result = await operation(supabase, deviceId, userId, order.client_operation_id, 'create_order', order.payload)
+      const updating = order.payload?.operation === 'update_order'
+      const body = updating
+        ? { id: order.payload.id, version: order.payload.version, items: order.payload.items, notes: order.payload.notes, discount_amount: order.payload.discount_amount }
+        : order.payload
+      const result = await operation(supabase, deviceId, userId, order.client_operation_id, updating ? 'update_order' : 'create_order', body)
       await pool.query(
         `update orders set
            sync_status = 'synced', sync_error = null,

@@ -48,6 +48,27 @@ export function orderTypeLabel(value: string) {
   return value
 }
 
+function categoryMentioned(name: string, category: string) {
+  const hay = name.toLowerCase()
+  const group = category.toLowerCase().trim()
+  if (!group) return true
+  if (hay.includes(group)) return true
+  return group.split(/\s+/).some((word) => {
+    if (word.length < 3) return false
+    if (hay.includes(word)) return true
+    const singular = word.endsWith('s') ? word.slice(0, -1) : word
+    return singular.length > 2 && hay.includes(singular)
+  })
+}
+
+export function orderItemName(categoryName: string, itemName: string) {
+  const category = categoryName.trim()
+  const name = itemName.trim()
+  if (!name) return category || 'Item'
+  if (!category || categoryMentioned(name, category)) return name
+  return `${name} ${category}`
+}
+
 export function statusLabel(value: string) {
   if (value === 'dine_in') return 'Dine-in'
   return value.split('_').map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')

@@ -66,6 +66,14 @@ export interface PlaceGuest {
   instructions: string
 }
 
+export interface UpdateOrderInput {
+  id: string
+  notes: string
+  discountMode: 'percent' | 'amount'
+  discountValue: number
+  lines: { menuItemId: string; variantId: string | null; quantity: number; notes: string }[]
+}
+
 export interface PlaceOrderInput {
   orderType: OrderType
   tableId: string | null
@@ -75,6 +83,36 @@ export interface PlaceOrderInput {
   deliveryFee: number
   lines: { menuItemId: string; variantId: string | null; quantity: number; notes: string }[]
   guest: PlaceGuest | null
+}
+
+export interface OrderSnapshotLine {
+  name: string
+  variantName: string | null
+  quantity: number
+  unitPrice: number
+  lineTotal: number
+  notes: string
+}
+
+export interface OrderSnapshot {
+  total: number
+  subtotal: number
+  discount: number
+  tax: number
+  deliveryFee: number
+  notes: string
+  items: OrderSnapshotLine[]
+}
+
+export type OrderEventKind = 'created' | 'edited' | 'voided'
+
+export interface OrderEvent {
+  id: string
+  kind: OrderEventKind
+  summary: string
+  before: OrderSnapshot | null
+  after: OrderSnapshot | null
+  createdAt: string
 }
 
 export interface OrderSummary {
@@ -89,12 +127,16 @@ export interface OrderSummary {
   syncError: string | null
   origin: 'local' | 'server'
   createdAt: string
+  editedAt: string | null
+  voidedAt: string | null
   tableName: string | null
   customerName: string | null
 }
 
 export interface OrderLine {
   id: string
+  menuItemId: string | null
+  variantId: string | null
   name: string
   variantName: string | null
   unitPrice: number
@@ -118,7 +160,10 @@ export interface OrderDetail extends OrderSummary {
   restaurantPhone: string
   restaurantAddress: string
   receiptFooter: string
+  editedAt: string | null
+  voidedAt: string | null
   items: OrderLine[]
+  events: OrderEvent[]
 }
 
 export interface SyncReport {
@@ -160,9 +205,10 @@ export interface DesktopApi {
   saveConfig(input: ConfigInput): Promise<AppStatus>
   loadCounter(): Promise<CounterData>
   placeOrder(input: PlaceOrderInput): Promise<{ id: string }>
+  updateOrder(input: UpdateOrderInput): Promise<{ id: string }>
   listOrders(filter: OrderFilter): Promise<OrderSummary[]>
   getOrder(id: string): Promise<OrderDetail>
-  discardOrder(id: string): Promise<void>
+  voidOrder(id: string): Promise<void>
   getDaySales(day: string): Promise<DaySales>
   sync(): Promise<SyncReport>
 }

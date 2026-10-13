@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Minus, Plus, Search } from 'lucide-react'
 import type { CounterData, MenuItemRow, OrderType } from '@shared/types'
-import { estimateTotals, formatMoney, todayDiscountPercent } from '@shared/format'
+import { estimateTotals, formatMoney, orderItemName, orderLabel, orderTypeLabel, todayDiscountPercent } from '@shared/format'
 
 interface Line { key: string; menuItemId: string; variantId: string | null; quantity: number; notes: string }
 
 const blankGuest = { customerId: '', name: '', phone: '', addressId: '', address: '', area: '', landmark: '', instructions: '' }
 
-export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: string) => void }) {
+export function Counter({ reload, editingId, onPlaced, onCancelEdit }: { reload: number; editingId: string | null; onPlaced: (id: string, revised: boolean) => void; onCancelEdit: () => void }) {
   const [data, setData] = useState<CounterData | null>(null)
   const [error, setError] = useState('')
   const [type, setType] = useState<OrderType>('dine_in')
@@ -23,7 +23,10 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
   const [picking, setPicking] = useState<MenuItemRow | null>(null)
   const [formError, setFormError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [editLabel, setEditLabel] = useState('')
+  const [editGuest, setEditGuest] = useState('')
   const seeded = useRef(false)
+  const previousEdit = useRef<string | null>(null)
 
   useEffect(() => {
     let cancel = false
@@ -44,6 +47,57 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
       .catch((reason: unknown) => { if (!cancel) setError(reason instanceof Error ? reason.message : 'The menu could not be loaded.') })
     return () => { cancel = true }
   }, [reload])
+
+  useEffect(() => {
+    if (previousEdit.current && !editingId) {
+      setLines([])
+      setNotes('')
+      setGuest(blankGuest)
+      setTableId('')
+      setType('dine_in')
+      setDiscountValue(0)
+      setFormError('')
+      setEditLabel('')
+      setEditGuest('')
+      setBusy(false)
+    }
+    previousEdit.current = editingId
+  }, [editingId])
+
+  useEffect(() => {
+    if (!editingId) return
+    let cancel = false
+    setBusy(true)
+    setFormError('')
+    window.bitezone.getOrder(editingId)
+      .then((order) => {
+        if (cancel) return
+        if (order.status !== 'placed') {
+          setFormError('The kitchen already has this order, so the items stay as they are.')
+          return
+        }
+        const missing = order.items.some((item) => !item.menuItemId)
+        setType(order.orderType)
+        setNotes(order.notes)
+        setDiscountMode('amount')
+        setDiscountValue(order.discount)
+        setFee(order.deliveryFee)
+        setEditLabel(`${orderLabel(order.orderNumber, order.localNumber)} · ${orderTypeLabel(order.orderType)}`)
+        setEditGuest(order.customerName || order.tableName || '')
+        setLines(order.items.flatMap((item) => item.menuItemId ? [{
+          key: item.id,
+          menuItemId: item.menuItemId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          notes: item.notes,
+        }] : []))
+        seeded.current = true
+        if (missing) setFormError('One saved item is no longer on the menu. Add it again if it still belongs on this order.')
+      })
+      .catch((reason: unknown) => { if (!cancel) setFormError(reason instanceof Error ? reason.message : 'That order could not be opened.') })
+      .finally(() => { if (!cancel) setBusy(false) })
+    return () => { cancel = true }
+  }, [editingId])
 
   const busyTables = useMemo(() => new Set(data?.busyTableIds ?? []), [data])
   const categories = data?.categories ?? []
@@ -102,10 +156,17 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
     return item.price
   }
 
+  function titleOf(item: { categoryId: string; name: string } | undefined) {
+    if (!item || !data) return 'Unavailable item'
+    const categoryName = data.categories.find((row) => row.id === item.categoryId)?.name ?? ''
+    return orderItemName(categoryName, item.name)
+  }
+
   function nameOf(line: Line) {
     const item = data?.items.find((row) => row.id === line.menuItemId)
     const variant = data?.variants.find((row) => row.id === line.variantId)
-    return variant ? `${item?.name ?? 'Item'} · ${variant.name}` : item?.name ?? 'Unavailable item'
+    const title = titleOf(item)
+    return variant ? `${title} · ${variant.name}` : title
   }
 
   const priced = lines.map((line) => ({ ...line, price: priceOf(line) }))
@@ -134,7 +195,13 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
     if (!lines.length) return setFormError('Add at least one item.')
     if (missing) return setFormError('An item is no longer on the menu. Remove it and choose again.')
     setBusy(true)
+    const payloadLines = lines.map(({ menuItemId, variantId, quantity, notes: itemNotes }) => ({ menuItemId, variantId, quantity, notes: itemNotes }))
     try {
+      if (editingId) {
+        await window.bitezone.updateOrder({ id: editingId, notes, discountMode, discountValue, lines: payloadLines })
+        onPlaced(editingId, true)
+        return
+      }
       const result = await window.bitezone.placeOrder({
         orderType: type,
         tableId: type === 'dine_in' && tableId ? tableId : null,
@@ -142,14 +209,14 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
         discountMode,
         discountValue,
         deliveryFee: type === 'delivery' ? fee : 0,
-        lines: lines.map(({ menuItemId, variantId, quantity, notes: itemNotes }) => ({ menuItemId, variantId, quantity, notes: itemNotes })),
+        lines: payloadLines,
         guest: type === 'dine_in' ? null : guest,
       })
       setLines([])
       setNotes('')
       setGuest(blankGuest)
       setTableId('')
-      onPlaced(result.id)
+      onPlaced(result.id, false)
     } catch (reason) {
       setFormError(reason instanceof Error ? reason.message : 'The order could not be saved.')
       setBusy(false)
@@ -167,6 +234,9 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
     <div className="counter">
       <div className="menu">
         <div className="menu-head">
+          {editingId ? (
+            <p className="hint">Editing {editLabel || 'this order'}{editGuest ? ` · ${editGuest}` : ''}. Change the items, save, then print the new slip. The guest and order type stay the same.</p>
+          ) : (
           <div className="types" role="tablist" aria-label="Order type">
             {(['dine_in', 'takeaway', 'delivery'] as const).map((value) => (
               <button key={value} aria-pressed={type === value} onClick={() => { setType(value); if (value === 'delivery') setFee(data.settings.defaultDeliveryFee) }}>
@@ -174,7 +244,8 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
               </button>
             ))}
           </div>
-          {type === 'dine_in' && (
+          )}
+          {!editingId && type === 'dine_in' && (
             <div className="choices" role="listbox" aria-label="Tables">
               {data.tables.map((table) => {
                 const taken = busyTables.has(table.id)
@@ -183,7 +254,7 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
               <p className="hint">{data.tables.length ? 'Choose a table, or leave them all off.' : 'No tables on this computer. You can still place the dine-in order.'}</p>
             </div>
           )}
-          {type !== 'dine_in' && (
+          {!editingId && type !== 'dine_in' && (
             <div className="guest">
               <div className="form-grid">
                 <label>Customer name<input aria-label="Customer name" value={guest.name} placeholder="Start typing a saved name" onChange={(event) => setGuest({ ...guest, customerId: '', name: event.target.value })} /></label>
@@ -236,7 +307,7 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
               }}>
                 {quantity > 0 && <span className="qty">{quantity}</span>}
                 <span className="eyebrow">{categoryName}</span>
-                <strong>{item.name}</strong>
+                <strong>{orderItemName(categoryName ?? '', item.name)}</strong>
                 <span className="mono">{formatMoney(item.price)}</span>
               </button>
             )
@@ -286,14 +357,15 @@ export function Counter({ reload, onPlaced }: { reload: number; onPlaced: (id: s
             <div className="grand"><dt>Total</dt><dd className="mono">{formatMoney(totals.total)}</dd></div>
           </dl>
           {formError && <p className="form-error">{formError}</p>}
-          <button className="primary place" disabled={busy || !lines.length} onClick={() => void place()}>{busy ? 'Saving…' : 'Place order'}</button>
+          <button className="primary place" disabled={busy || !lines.length} onClick={() => void place()}>{busy ? 'Saving…' : editingId ? 'Save changes' : 'Place order'}</button>
+          {editingId && <button className="secondary" type="button" disabled={busy} onClick={onCancelEdit}>Cancel</button>}
           <p className="hint">Saved on this computer right away. It is still here after shutdown. Press Sync when the internet is on.</p>
         </div>
       </aside>
       {picking && (
         <div className="modal" role="dialog" aria-modal="true" aria-label={picking.name}>
           <div className="modal-card">
-            <h2>{picking.name}</h2>
+            <h2>{titleOf(picking)}</h2>
             <p>Choose one option.</p>
             {data.variants.filter((row) => row.menuItemId === picking.id).map((variant) => (
               <button key={variant.id} className="option" onClick={() => add(picking, variant.id)}>

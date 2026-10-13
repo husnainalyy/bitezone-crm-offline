@@ -1,7 +1,7 @@
 import path from 'node:path'
 import { app, BrowserWindow, ipcMain } from 'electron'
-import type { ConfigInput, OrderFilter, PlaceOrderInput } from '../shared/types'
-import { discardOrder, getDaySales, getOrder, listOrders, loadCounter, placeOrder } from './catalog'
+import type { ConfigInput, OrderFilter, PlaceOrderInput, UpdateOrderInput } from '../shared/types'
+import { getDaySales, getOrder, listOrders, loadCounter, placeOrder, updateOrder, voidOrder } from './catalog'
 import { configForm, readConfig, saveConfig } from './config'
 import { closeDb, explainDb, getStatus } from './db'
 import { exclusive } from './lock'
@@ -51,9 +51,10 @@ app.whenReady().then(() => {
   }))
   ipcMain.handle('counter:load', () => guard(() => loadCounter()))
   ipcMain.handle('order:place', (_event, input: PlaceOrderInput) => guard(() => placeOrder(input)))
+  ipcMain.handle('order:update', (_event, input: UpdateOrderInput) => guard(() => updateOrder(input)))
   ipcMain.handle('orders:list', (_event, filter: OrderFilter) => guard(() => listOrders(filter)))
   ipcMain.handle('order:get', (_event, id: string) => guard(() => getOrder(id)))
-  ipcMain.handle('order:discard', (_event, id: string) => guard(() => discardOrder(id)))
+  ipcMain.handle('order:void', (_event, id: string) => guard(() => voidOrder(id)))
   ipcMain.handle('sales:day', (_event, day: string) => guard(() => getDaySales(day)))
   ipcMain.handle('sync', () => guard(() => syncNow()))
   createWindow()
