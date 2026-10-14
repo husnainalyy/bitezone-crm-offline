@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { OrderDetail, OrderEvent, OrderFilter, OrderSnapshot, OrderSummary } from '@shared/types'
-import { formatMoney, formatWhen, orderLabel, orderTypeLabel, statusLabel } from '@shared/format'
+import { formatMoney, formatWhen, orderLabel, orderTypeLabel, statusLabel, tokenLabel } from '@shared/format'
 import { PrintSlip } from './slip'
 
 function listBadge(row: OrderSummary) {
@@ -119,7 +119,7 @@ export function Orders({ reload, selectedId, printId, onSelect, onChanged, onEdi
             return (
               <li key={row.id}>
                 <button className={selectedId === row.id ? 'selected' : ''} onClick={() => onSelect(row.id)}>
-                  <span className="mono">{orderLabel(row.orderNumber, row.localNumber)}</span>
+                  <span className="mono">{tokenLabel(row.tokenNumber) || orderLabel(row.orderNumber, row.localNumber)}</span>
                   <span>{row.customerName || row.tableName || orderTypeLabel(row.orderType)}</span>
                   <em className={badge.className}>{badge.text}</em>
                   <b className="mono">{formatMoney(row.total)}</b>
@@ -135,8 +135,9 @@ export function Orders({ reload, selectedId, printId, onSelect, onChanged, onEdi
           <>
             <div className="ticket-head">
               <div>
-                <p className="eyebrow">{orderTypeLabel(order.orderType)}{order.tableName ? ` · ${order.tableName}` : ''}</p>
-                <h2>{orderLabel(order.orderNumber, order.localNumber)}</h2>
+                <p className="eyebrow">{orderTypeLabel(order.orderType)}{order.tableName ? ` · ${order.tableName}` : ''}{tokenLabel(order.tokenNumber) ? ` · ${tokenLabel(order.tokenNumber)}` : ''}</p>
+                <h2>{tokenLabel(order.tokenNumber) || orderLabel(order.orderNumber, order.localNumber)}</h2>
+                {tokenLabel(order.tokenNumber) && <p className="hint">{orderLabel(order.orderNumber, order.localNumber)}</p>}
                 <p>
                   {formatWhen(order.createdAt)}
                   {order.editedAt ? ` · Edited ${formatWhen(order.editedAt)}` : ''}

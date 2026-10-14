@@ -1,6 +1,6 @@
 import { useRef } from 'react'
 import type { OrderDetail } from '@shared/types'
-import { formatWhen, orderLabel, orderTypeLabel } from '@shared/format'
+import { formatWhen, orderLabel, orderTypeLabel, tokenLabel } from '@shared/format'
 
 const SLIP_CSS = `
 .slip{width:72mm;margin:0 auto;color:#000;background:#fff;font-family:"Courier New",Courier,monospace;font-size:12px;line-height:1.35}
@@ -8,6 +8,7 @@ const SLIP_CSS = `
 .slip-center{text-align:center}
 .slip-name{font-size:18px;font-weight:700;letter-spacing:.5px;text-transform:uppercase}
 .slip-title{font-size:13px;font-weight:700;letter-spacing:1px;margin-top:4px}
+.slip-table{font-size:22px;font-weight:700;letter-spacing:1px;margin:6px 0 2px}
 .slip-meta{font-size:11px;white-space:pre-wrap}
 .slip-rule{border:0;border-top:1px dashed #000;margin:6px 0}
 .slip-row{display:flex;justify-content:space-between;gap:8px}
@@ -87,9 +88,11 @@ export function PrintSlip({ kind, order, onClose }: { kind: 'kitchen' | 'bill'; 
               {kind === 'bill' && order.restaurantAddress && <div className="slip-meta">{order.restaurantAddress}</div>}
               {kind === 'bill' && order.restaurantPhone && <div className="slip-meta">{order.restaurantPhone}</div>}
               <div className="slip-title">{order.editedAt ? 'REVISED ' : ''}{kind === 'kitchen' ? 'KITCHEN ORDER' : 'CUSTOMER BILL'}</div>
+              {tokenLabel(order.tokenNumber) && <div className="slip-table">{tokenLabel(order.tokenNumber)}</div>}
             </header>
             <hr className="slip-rule" />
             <div className="slip-row"><span>Order</span><b>{orderLabel(order.orderNumber, order.localNumber)}</b></div>
+            {tokenLabel(order.tokenNumber) && <div className="slip-row"><span>Token</span><b>{order.tokenNumber}</b></div>}
             <div className="slip-row"><span>Time</span><span>{formatWhen(order.createdAt)}</span></div>
             <div className="slip-row"><span>Type</span><span>{orderTypeLabel(order.orderType)}</span></div>
             {order.tableName && <div className="slip-row"><span>Table</span><span>{order.tableName}</span></div>}

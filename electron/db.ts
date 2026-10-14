@@ -76,6 +76,9 @@ async function ensureSchema(db: PGlite) {
     end $$;
     alter table orders add column if not exists edited_at timestamptz;
     alter table orders add column if not exists voided_at timestamptz;
+    alter table orders add column if not exists token_number integer not null default 0;
+    alter table orders add column if not exists token_day date;
+    create index if not exists orders_token_day_idx on orders (token_day, token_number);
     create table if not exists order_events (
       id uuid primary key,
       order_id uuid not null references orders (id) on delete cascade,

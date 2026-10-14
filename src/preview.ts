@@ -1,5 +1,5 @@
 import type { AppStatus, ConfigForm, ConfigInput, CounterData, DaySales, DesktopApi, OrderDetail, OrderFilter, OrderSnapshot, OrderSummary, PlaceOrderInput, UpdateOrderInput } from '@shared/types'
-import { businessDate, estimateTotals, formatMoney, money, orderItemName, roundMoney } from '@shared/format'
+import { businessDate, estimateTotals, formatMoney, money, orderItemName, roundMoney, serviceDay } from '@shared/format'
 
 const burger = '6d5b6a30-4c1a-4c1a-8c1a-6d5b6a304c1a'
 const drink = '7e6c7b41-5d2b-4d2b-9d2b-7e6c7b415d2b'
@@ -93,9 +93,12 @@ export function installPreview() {
       const requested = input.discountMode === 'percent' ? lines.reduce((sum, line) => sum + line.lineTotal, 0) * input.discountValue / 100 : input.discountValue
       const totals = estimateTotals(lines.map((line) => ({ quantity: line.quantity, price: line.unitPrice })), requested, 0, fee)
       const id = crypto.randomUUID()
+      const day = serviceDay()
+      const tokenNumber = orders.filter((order) => serviceDay(new Date(order.createdAt)) === day && order.tokenNumber > 0).reduce((max, order) => Math.max(max, order.tokenNumber), 0) + 1
       const order: OrderDetail = {
         id,
         localNumber: orders.length + 1,
+        tokenNumber,
         orderNumber: null,
         orderType: input.orderType,
         status: 'placed',
@@ -222,6 +225,7 @@ export function installPreview() {
         rows: rows.map((order) => ({
           id: order.id,
           localNumber: order.localNumber,
+          tokenNumber: order.tokenNumber,
           orderNumber: order.orderNumber,
           orderType: order.orderType,
           status: order.status,

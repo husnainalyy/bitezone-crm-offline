@@ -82,7 +82,7 @@ export function Counter({ reload, editingId, onPlaced, onCancelEdit }: { reload:
         setDiscountMode('amount')
         setDiscountValue(order.discount)
         setFee(order.deliveryFee)
-        setEditLabel(`${orderLabel(order.orderNumber, order.localNumber)} · ${orderTypeLabel(order.orderType)}`)
+        setEditLabel(`${order.tokenNumber ? `Token ${order.tokenNumber}` : orderLabel(order.orderNumber, order.localNumber)} · ${orderTypeLabel(order.orderType)}`)
         setEditGuest(order.customerName || order.tableName || '')
         setLines(order.items.flatMap((item) => item.menuItemId ? [{
           key: item.id,

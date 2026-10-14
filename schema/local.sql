@@ -89,6 +89,8 @@ create sequence if not exists local_order_number_seq start 1;
 create table if not exists orders (
   id uuid primary key,
   local_number integer not null default 0,
+  token_number integer not null default 0,
+  token_day date,
   order_number bigint unique,
   order_type text not null check (order_type in ('dine_in', 'takeaway', 'delivery')),
   order_source text not null check (order_source in ('admin', 'waiter', 'phone')),
@@ -119,6 +121,7 @@ create table if not exists orders (
 );
 
 create index if not exists orders_created_idx on orders (created_at desc);
+create index if not exists orders_token_day_idx on orders (token_day, token_number);
 create index if not exists orders_open_table_idx on orders (table_id) where table_id is not null and status not in ('completed', 'cancelled');
 
 create table if not exists order_events (

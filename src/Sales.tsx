@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DaySales } from '@shared/types'
-import { businessDate, formatDay, formatMoney, formatWhen, orderLabel, orderTypeLabel } from '@shared/format'
+import { businessDate, formatDay, formatMoney, formatWhen, orderLabel, orderTypeLabel, tokenLabel } from '@shared/format'
 
 export function Sales({ reload, onOpenOrder }: { reload: number; onOpenOrder: (id: string) => void }) {
   const today = businessDate()
@@ -85,7 +85,7 @@ export function Sales({ reload, onOpenOrder }: { reload: number; onOpenOrder: (i
                   {report.rows.map((row) => (
                     <li key={row.id}>
                       <button type="button" onClick={() => onOpenOrder(row.id)}>
-                        <span className="mono">{orderLabel(row.orderNumber, row.localNumber)}</span>
+                        <span className="mono">{tokenLabel(row.tokenNumber) || orderLabel(row.orderNumber, row.localNumber)}</span>
                         <span>{row.customerName || row.tableName || orderTypeLabel(row.orderType)}</span>
                         <em>{row.status === 'cancelled' ? 'Cancelled' : formatWhen(row.createdAt)}</em>
                         <b className="mono">{formatMoney(row.total)}</b>

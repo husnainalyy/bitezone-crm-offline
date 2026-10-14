@@ -32,6 +32,7 @@ app.whenReady().then(async () => {
   if (order.total !== 1450) throw new Error(`expected total 1450, got ${order.total}`)
   if (order.syncStatus !== 'pending') throw new Error('order should be waiting to sync')
   if (!order.events.some((event) => event.kind === 'created')) throw new Error('created event missing')
+  if (!order.tokenNumber || order.tokenNumber < 1) throw new Error('token number missing')
   await closeDb()
   const again = await getStatus()
   const reopened = await listOrders('open')

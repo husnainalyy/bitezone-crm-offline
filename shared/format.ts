@@ -16,6 +16,32 @@ export function businessDate(date = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date)
 }
 
+/** Service day for token numbers: resets at 6:00 Asia/Karachi (shop night run ends at 2am). */
+export function serviceDay(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Karachi',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: 'numeric',
+      hourCycle: 'h23',
+    }).formatToParts(date).filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]),
+  ) as { year: string; month: string; day: string; hour: string }
+  const calendar = `${parts.year}-${parts.month}-${parts.day}`
+  if (Number(parts.hour) < 6) {
+    const previous = new Date(Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day)))
+    previous.setUTCDate(previous.getUTCDate() - 1)
+    return previous.toISOString().slice(0, 10)
+  }
+  return calendar
+}
+
+export function tokenLabel(tokenNumber: number | null | undefined) {
+  if (!tokenNumber || tokenNumber < 1) return null
+  return `Token ${tokenNumber}`
+}
+
 export function formatDay(day: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day
   return new Intl.DateTimeFormat('en-GB', {

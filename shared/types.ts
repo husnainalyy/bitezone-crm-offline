@@ -118,6 +118,7 @@ export interface OrderEvent {
 export interface OrderSummary {
   id: string
   localNumber: number
+  tokenNumber: number
   orderNumber: number | null
   orderType: OrderType
   status: string
@@ -179,6 +180,7 @@ export interface SyncReport {
 export interface DaySalesOrder {
   id: string
   localNumber: number
+  tokenNumber: number
   orderNumber: number | null
   orderType: OrderType
   status: string

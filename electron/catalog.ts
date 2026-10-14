@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 import type { Db } from './db'
-import { dateOnly, estimateTotals, formatMoney, iso, money, orderItemName, roundMoney } from '../shared/format'
+import { dateOnly, estimateTotals, formatMoney, iso, money, orderItemName, roundMoney, serviceDay } from '../shared/format'
 import type {
   CounterData,
   DaySales,
@@ -326,12 +326,18 @@ export function placeOrder(input: PlaceOrderInput) {
       payload.instructions_snapshot = input.guest.instructions.trim()
     }
     const localNumber = await client.query<{ n: string }>(`select nextval('local_order_number_seq') as n`)
+    const day = serviceDay()
+    const token = await client.query<{ n: string | number }>(
+      `select coalesce(max(token_number), 0) + 1 as n from orders where token_day = $1::date`,
+      [day],
+    )
+    const tokenNumber = Number(token.rows[0]?.n ?? 1)
     await client.query(
       `insert into orders (
-        id, local_number, order_type, order_source, table_id, customer_id, status, subtotal, discount_amount,
+        id, local_number, token_number, token_day, order_type, order_source, table_id, customer_id, status, subtotal, discount_amount,
         tax_amount, tax_rate, delivery_fee, total, notes, sync_status, client_operation_id, payload, origin
-      ) values ($1,$2,$3,$4,$5,$6,'placed',$7,$8,$9,$10,$11,$12,$13,'pending',$14,$15::jsonb,'local')`,
-      [orderId, Number(localNumber.rows[0]?.n ?? 1), input.orderType, payload.order_source, tableId, guest.customerId, totals.subtotal, totals.discount, totals.tax, taxRate, fee, totals.total, notes || null, operationId, JSON.stringify(payload)],
+      ) values ($1,$2,$3,$4::date,$5,$6,$7,$8,'placed',$9,$10,$11,$12,$13,$14,$15,'pending',$16,$17::jsonb,'local')`,
+      [orderId, Number(localNumber.rows[0]?.n ?? 1), tokenNumber, day, input.orderType, payload.order_source, tableId, guest.customerId, totals.subtotal, totals.discount, totals.tax, taxRate, fee, totals.total, notes || null, operationId, JSON.stringify(payload)],
     )
     for (const line of priced) {
       await client.query(
@@ -409,7 +415,7 @@ export function updateOrder(input: UpdateOrderInput) {
 }
 
 const summarySql = `
-  select o.id, o.local_number, o.order_number, o.order_type, o.status, o.payment_status, o.total,
+  select o.id, o.local_number, o.token_number, o.order_number, o.order_type, o.status, o.payment_status, o.total,
          o.sync_status, o.sync_error, o.origin, o.created_at, o.edited_at, o.voided_at,
          t.name as table_name, c.name as customer_name
   from orders o
@@ -419,6 +425,7 @@ const summarySql = `
 interface SummaryRow {
   id: string
   local_number: number
+  token_number: number | string | null
   order_number: string | null
   order_type: string
   status: string
@@ -438,6 +445,7 @@ function toSummary(row: SummaryRow): OrderSummary {
   return {
     id: row.id,
     localNumber: row.local_number,
+    tokenNumber: Number(row.token_number ?? 0),
     orderNumber: row.order_number == null ? null : Number(row.order_number),
     orderType: orderType(row.order_type),
     status: row.status,
@@ -608,6 +616,7 @@ export async function getDaySales(day: string): Promise<DaySales> {
   const rows = await pool.query<{
     id: string
     local_number: number
+    token_number: number | string | null
     order_number: string | null
     order_type: string
     status: string
@@ -616,7 +625,7 @@ export async function getDaySales(day: string): Promise<DaySales> {
     table_name: string | null
     customer_name: string | null
   }>(`
-    select o.id, o.local_number, o.order_number, o.order_type, o.status, o.total, o.created_at,
+    select o.id, o.local_number, o.token_number, o.order_number, o.order_type, o.status, o.total, o.created_at,
            t.name as table_name, c.name as customer_name
     from orders o
     left join restaurant_tables t on t.id = o.table_id
@@ -642,6 +651,7 @@ export async function getDaySales(day: string): Promise<DaySales> {
     rows: rows.rows.map((row) => ({
       id: row.id,
       localNumber: row.local_number,
+      tokenNumber: Number(row.token_number ?? 0),
       orderNumber: row.order_number == null ? null : Number(row.order_number),
       orderType: orderType(row.order_type),
       status: row.status,
